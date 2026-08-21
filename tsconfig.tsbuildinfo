@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/casemodal.tsx","./src/components/formatcard.tsx","./src/components/gallery.tsx","./src/components/layout.tsx","./src/lib/supabase.ts","./src/pages/formatdetailpage.tsx","./src/pages/formatslistpage.tsx","./src/utils/format.ts"],"version":"5.9.3"}
