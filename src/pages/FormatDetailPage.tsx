@@ -21,7 +21,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import type { AdFormat, CaseImage } from "../types";
+import type { AdFormat, CaseImage, CaseVideo } from "../types";
 import {
   VERTICALS,
   FORMAT_TYPES,
@@ -45,6 +45,10 @@ interface EditImage {
   markedForDeletion?: boolean;
 }
 
+interface EditVideo extends CaseVideo {
+  markedForDeletion?: boolean;
+}
+
 export default function FormatDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -61,7 +65,11 @@ export default function FormatDetailPage() {
   const [editData, setEditData] = useState<Partial<AdFormat>>({});
   const [linkInput, setLinkInput] = useState("");
   const [editImages, setEditImages] = useState<EditImage[]>([]);
+  const [editVideos, setEditVideos] = useState<EditVideo[]>([]);
+  const [editVideoInput, setEditVideoInput] = useState<File[]>([]);
+  const [editVideoProgress, setEditVideoProgress] = useState(0);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const editVideoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function fetchFormat() {
@@ -71,7 +79,7 @@ export default function FormatDetailPage() {
       try {
         const { data, error: fetchError } = await supabase
           .from("ad_formats")
-          .select("*, case_images(*)")
+          .select("*, case_images(*), case_videos(*)")
           .eq("id", id)
           .maybeSingle();
 
@@ -118,6 +126,8 @@ export default function FormatDetailPage() {
             }))
           : [];
       setEditImages(imgs);
+      setEditVideos((format.case_videos || []).map((video) => ({ ...video })));
+      setEditVideoInput([]);
       setEditing(true);
     }
   };
@@ -126,6 +136,8 @@ export default function FormatDetailPage() {
     setEditing(false);
     if (format) setEditData({ ...format });
     setEditImages([]);
+    setEditVideos([]);
+    setEditVideoInput([]);
   };
 
   const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,6 +187,31 @@ export default function FormatDetailPage() {
       [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
       return updated;
     });
+  };
+
+  const addAdditionalFormat = (value: string) => {
+    if (value && value !== "Home Day" && !editData.additional_formats?.includes(value)) {
+      setEditData({ ...editData, additional_formats: [...(editData.additional_formats || []), value] });
+    }
+  };
+
+  const removeAdditionalFormat = (value: string) => {
+    setEditData({ ...editData, additional_formats: editData.additional_formats?.filter((item) => item !== value) || [] });
+  };
+
+  const handleEditVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("video/"));
+    if (files.length !== (e.target.files || []).length) setError("Por favor, selecione apenas arquivos de vídeo.");
+    setEditVideoInput((prev) => [...prev, ...files]);
+    if (e.target) e.target.value = "";
+  };
+
+  const removeEditVideo = (index: number) => {
+    setEditVideos((prev) => prev.map((video, videoIndex) => videoIndex === index ? { ...video, markedForDeletion: !video.markedForDeletion } : video));
+  };
+
+  const removeNewEditVideo = (index: number) => {
+    setEditVideoInput((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
   };
 
   const handleEditChange = (
@@ -305,6 +342,26 @@ export default function FormatDetailPage() {
       // Update cover image (first non-deleted image)
       const coverUrl = remainingImages.length > 0 ? remainingImages[0].url : null;
 
+      const videosToDelete = editVideos.filter((video) => video.markedForDeletion);
+      for (const video of videosToDelete) {
+        await supabase.from("case_videos").delete().eq("id", video.id);
+        await supabase.storage.from("ad-formats").remove([video.storage_path]);
+      }
+
+      const remainingVideos = editVideos.filter((video) => !video.markedForDeletion);
+      for (let i = 0; i < editVideoInput.length; i++) {
+        const file = editVideoInput[i];
+        const fileExt = file.name.split(".").pop() || "mp4";
+        const storagePath = `videos/${id}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        setEditVideoProgress(Math.round((i / editVideoInput.length) * 90));
+        const { error: uploadError } = await supabase.storage.from("ad-formats").upload(storagePath, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from("ad-formats").getPublicUrl(storagePath);
+        const { error: videoError } = await supabase.from("case_videos").insert({ format_id: id, file_name: file.name, storage_path: storagePath, video_url: urlData.publicUrl, mime_type: file.type, size_bytes: file.size, sort_order: remainingVideos.length + i });
+        if (videoError) throw videoError;
+        setEditVideoProgress(Math.round(((i + 1) / editVideoInput.length) * 100));
+      }
+
       // If all images removed, also remove the old cover
       if (!coverUrl && format?.image_url) {
         try {
@@ -329,6 +386,8 @@ export default function FormatDetailPage() {
           plataforma: editData.plataforma || null,
           publish_date: editData.publish_date || null,
           video_links: editData.video_links || [],
+          additional_formats: editData.format_type === "Home Day" ? editData.additional_formats || [] : [],
+          custom_format_name: editData.format_type === "Outros" ? editData.custom_format_name?.trim() || null : null,
           impressoes: editData.impressoes || null,
           alcance: editData.alcance || null,
           cliques: editData.cliques || null,
@@ -342,7 +401,7 @@ export default function FormatDetailPage() {
           outros_resultados: editData.outros_resultados?.trim() || null,
         })
         .eq("id", id)
-        .select("*, case_images(*)")
+        .select("*, case_images(*), case_videos(*)")
         .single();
 
       if (updateError) throw updateError;
@@ -357,6 +416,8 @@ export default function FormatDetailPage() {
             ? [data.image_url]
             : [];
       setGalleryImages(imgs);
+      setEditVideos([]);
+      setEditVideoInput([]);
 
       setEditImages([]);
       setEditing(false);
@@ -388,6 +449,10 @@ export default function FormatDetailPage() {
         if (paths.length > 0) {
           await supabase.storage.from("ad-formats").remove(paths);
         }
+      }
+
+      if (format.case_videos?.length) {
+        await supabase.storage.from("ad-formats").remove(format.case_videos.map((video) => video.storage_path));
       }
 
       const { error: deleteError } = await supabase
@@ -635,6 +700,28 @@ export default function FormatDetailPage() {
                         </option>
                       ))}
                     </select>
+                    {editData.format_type === "Home Day" && (
+                      <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="badge bg-globo-600 text-white">Home Day</span>
+                          {(editData.additional_formats || []).map((item) => (
+                            <span key={item} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                              {item}<button type="button" onClick={() => removeAdditionalFormat(item)} className="text-slate-400 hover:text-red-600" aria-label={`Remover ${item}`}><X className="h-3.5 w-3.5" /></button>
+                            </span>
+                          ))}
+                        </div>
+                        <select defaultValue="" onChange={(e) => { addAdditionalFormat(e.target.value); e.target.value = ""; }} className="input-field">
+                          <option value="">Adicionar formato</option>
+                          {FORMAT_TYPES.filter((item) => item !== "Home Day" && !editData.additional_formats?.includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {editData.format_type === "Outros" && (
+                      <div className="mt-3">
+                        <label className="label-field">Nome do formato</label>
+                        <input type="text" name="custom_format_name" value={editData.custom_format_name || ""} onChange={handleEditChange} className="input-field" placeholder="Ex: Formato Especial XYZ" />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="label-field">Vertical</label>
@@ -824,6 +911,17 @@ export default function FormatDetailPage() {
                   )}
                 </div>
 
+                <div>
+                  <label className="label-field">Vídeos enviados</label>
+                  <input ref={editVideoFileInputRef} type="file" accept="video/*" multiple onChange={handleEditVideoSelect} className="hidden" />
+                  <button type="button" onClick={() => editVideoFileInputRef.current?.click()} className="flex min-h-24 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center hover:border-globo-400 hover:bg-globo-50/50"><Video className="h-6 w-6 text-slate-400" /><span className="mt-1 text-sm font-medium text-slate-600">+ Adicionar vídeo</span></button>
+                  <div className="mt-2 space-y-2">
+                    {editVideos.map((video, index) => <div key={video.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${video.markedForDeletion ? "border-red-200 bg-red-50 opacity-60" : "border-slate-200 bg-slate-50"}`}><Video className="h-4 w-4 flex-shrink-0 text-slate-400" /><span className="min-w-0 flex-1 truncate text-xs text-slate-600">{video.file_name}</span><button type="button" onClick={() => removeEditVideo(index)} className="text-slate-400 hover:text-red-600"><X className="h-4 w-4" /></button></div>)}
+                    {editVideoInput.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><Video className="h-4 w-4 flex-shrink-0 text-slate-400" /><span className="min-w-0 flex-1 truncate text-xs text-slate-600">{file.name}</span><button type="button" onClick={() => removeNewEditVideo(index)} className="text-slate-400 hover:text-red-600"><X className="h-4 w-4" /></button></div>)}
+                  </div>
+                  {saving && editVideoInput.length > 0 && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-globo-600 transition-all" style={{ width: `${editVideoProgress}%` }} /></div>}
+                </div>
+
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     onClick={cancelEditing}
@@ -854,6 +952,12 @@ export default function FormatDetailPage() {
                   <span className="badge bg-globo-50 text-globo-700">
                     {format.format_type}
                   </span>
+                  {format.format_type === "Home Day" && (format.additional_formats || []).map((item) => (
+                    <span key={item} className="badge bg-slate-100 text-slate-600">{item}</span>
+                  ))}
+                  {format.format_type === "Outros" && format.custom_format_name && (
+                    <span className="badge bg-slate-100 text-slate-600">{format.custom_format_name}</span>
+                  )}
                   {format.vertical && format.vertical !== "Outros" && (
                     <span className="badge bg-slate-100 text-slate-500">
                       {format.vertical}
@@ -924,6 +1028,13 @@ export default function FormatDetailPage() {
                         </a>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {format.case_videos && format.case_videos.length > 0 && (
+                  <div className="border-t border-slate-100 pt-4">
+                    <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400"><Video className="h-3.5 w-3.5" />Vídeos enviados</h3>
+                    <div className="space-y-3">{format.case_videos.map((video) => <div key={video.id} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"><video src={video.video_url} controls preload="metadata" className="w-full max-h-64 bg-slate-900" /><p className="truncate px-3 py-2 text-xs text-slate-600">{video.file_name}</p></div>)}</div>
                   </div>
                 )}
 

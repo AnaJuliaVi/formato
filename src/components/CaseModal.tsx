@@ -31,6 +31,11 @@ interface PendingImage {
   preview: string;
 }
 
+interface PendingVideo {
+  file: File;
+  progress: number;
+}
+
 interface CaseModalProps {
   open: boolean;
   onClose: () => void;
@@ -49,6 +54,8 @@ const emptyForm: AdFormatInput = {
   plataforma: "",
   publish_date: "",
   video_links: [],
+  additional_formats: [],
+  custom_format_name: "",
   impressoes: null,
   alcance: null,
   cliques: null,
@@ -66,10 +73,14 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
   const [activeTab, setActiveTab] = useState<Tab>("info");
   const [formData, setFormData] = useState<AdFormatInput>(emptyForm);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingVideos, setPendingVideos] = useState<PendingVideo[]>([]);
+  const [additionalFormatInput, setAdditionalFormatInput] = useState("");
+  const [videoProgress, setVideoProgress] = useState(0);
   const [linkInput, setLinkInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   if (!open) return null;
 
@@ -137,6 +148,47 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
     });
   };
 
+  const addAdditionalFormat = () => {
+    if (
+      formData.format_type === "Home Day" &&
+      additionalFormatInput &&
+      additionalFormatInput !== "Home Day" &&
+      !formData.additional_formats?.includes(additionalFormatInput)
+    ) {
+      setFormData({
+        ...formData,
+        additional_formats: [
+          ...(formData.additional_formats || []),
+          additionalFormatInput,
+        ],
+      });
+      setAdditionalFormatInput("");
+    }
+  };
+
+  const removeAdditionalFormat = (format: string) => {
+    setFormData({
+      ...formData,
+      additional_formats: formData.additional_formats?.filter((item) => item !== format) || [],
+    });
+  };
+
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter((file) => file.type.startsWith("video/"));
+    if (files.length !== (e.target.files || []).length) {
+      setError("Por favor, selecione apenas arquivos de vídeo.");
+    }
+    setPendingVideos((prev) => [
+      ...prev,
+      ...files.map((file) => ({ file, progress: 0 })),
+    ]);
+    if (e.target) e.target.value = "";
+  };
+
+  const removePendingVideo = (index: number) => {
+    setPendingVideos((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
+
   const moveImage = (index: number, direction: "left" | "right") => {
     setPendingImages((prev) => {
       const newIndex = direction === "left" ? index - 1 : index + 1;
@@ -172,6 +224,9 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
     setFormData(emptyForm);
     setLinkInput("");
     setPendingImages([]);
+    setPendingVideos([]);
+    setAdditionalFormatInput("");
+    setVideoProgress(0);
     setError(null);
     setActiveTab("info");
   };
@@ -218,9 +273,11 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
       }
 
       const insertData = {
-        title: formData.title.trim() || formData.format_type,
+        title: formData.title.trim() || formData.custom_format_name?.trim() || formData.format_type,
         vertical: formData.vertical || "Outros",
         format_type: formData.format_type,
+        additional_formats: formData.format_type === "Home Day" ? formData.additional_formats || [] : [],
+        custom_format_name: formData.format_type === "Outros" ? formData.custom_format_name?.trim() || null : null,
         description: formData.description?.trim() || null,
         image_url: uploadedUrls[0] || null,
         tags: [],
@@ -262,6 +319,29 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
           .insert(imageRecords);
 
         if (imagesError) throw imagesError;
+      }
+
+      for (let i = 0; i < pendingVideos.length; i++) {
+        const video = pendingVideos[i];
+        const fileExt = video.file.name.split(".").pop() || "mp4";
+        const filePath = `videos/${data.id}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        setVideoProgress(Math.round((i / pendingVideos.length) * 90));
+        const { error: videoUploadError } = await supabase.storage
+          .from("ad-formats")
+          .upload(filePath, video.file, { cacheControl: "3600", upsert: false, contentType: video.file.type });
+        if (videoUploadError) throw videoUploadError;
+        const { data: videoUrlData } = supabase.storage.from("ad-formats").getPublicUrl(filePath);
+        const { error: videoRecordError } = await supabase.from("case_videos").insert({
+          format_id: data.id,
+          file_name: video.file.name,
+          storage_path: filePath,
+          video_url: videoUrlData.publicUrl,
+          mime_type: video.file.type,
+          size_bytes: video.file.size,
+          sort_order: i,
+        });
+        if (videoRecordError) throw videoRecordError;
+        setVideoProgress(Math.round(((i + 1) / pendingVideos.length) * 100));
       }
 
       resetForm();
@@ -358,6 +438,35 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
                   ))}
                 </select>
               </div>
+
+              {formData.format_type === "Home Day" && (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="label-field">Formatos incluídos</label>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="badge bg-globo-600 text-white">Home Day</span>
+                    {(formData.additional_formats || []).map((format) => (
+                      <span key={format} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                        {format}
+                        <button type="button" onClick={() => removeAdditionalFormat(format)} className="text-slate-400 hover:text-red-600" aria-label={`Remover ${format}`}><X className="h-3.5 w-3.5" /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <select value={additionalFormatInput} onChange={(e) => setAdditionalFormatInput(e.target.value)} className="input-field">
+                      <option value="">Adicionar formato</option>
+                      {FORMAT_TYPES.filter((format) => format !== "Home Day" && !formData.additional_formats?.includes(format)).map((format) => <option key={format} value={format}>{format}</option>)}
+                    </select>
+                    <button type="button" onClick={addAdditionalFormat} disabled={!additionalFormatInput} className="btn-secondary flex-shrink-0"><Plus className="h-4 w-4" />Adicionar</button>
+                  </div>
+                </div>
+              )}
+
+              {formData.format_type === "Outros" && (
+                <div>
+                  <label className="label-field">Nome do formato</label>
+                  <input type="text" name="custom_format_name" value={formData.custom_format_name || ""} onChange={handleChange} className="input-field" placeholder="Ex: Formato Especial XYZ" />
+                </div>
+              )}
 
               {/* Vertical + Plataforma */}
               <div className="grid gap-4 sm:grid-cols-2">
@@ -609,6 +718,16 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
           {activeTab === "links" && (
             <div className="animate-fade-in space-y-4">
               <div>
+                <label className="label-field"><span className="inline-flex items-center gap-1.5"><Video className="h-4 w-4 text-slate-400" />Vídeos do case</span></label>
+                <input ref={videoInputRef} type="file" accept="video/*" multiple onChange={handleVideoSelect} className="hidden" />
+                <button type="button" onClick={() => videoInputRef.current?.click()} className="flex min-h-28 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center hover:border-globo-400 hover:bg-globo-50/50">
+                  <Video className="h-7 w-7 text-slate-400" />
+                  <span className="mt-2 text-sm font-medium text-slate-600">+ Adicionar vídeo</span>
+                  <span className="mt-1 text-xs text-slate-400">Arraste seus vídeos para cá ou clique para selecionar</span>
+                </button>
+                {pendingVideos.length > 0 && <div className="mt-3 space-y-2">{pendingVideos.map((video, index) => <div key={`${video.file.name}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex items-center gap-2"><Video className="h-4 w-4 flex-shrink-0 text-slate-400" /><span className="min-w-0 flex-1 truncate text-sm text-slate-700">{video.file.name}</span><button type="button" onClick={() => removePendingVideo(index)} className="text-slate-400 hover:text-red-600"><X className="h-4 w-4" /></button></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-globo-600 transition-all" style={{ width: `${uploading ? videoProgress : 0}%` }} /></div></div>)}</div>}
+              </div>
+              <div>
                 <label className="label-field">
                   <span className="inline-flex items-center gap-1.5">
                     <Video className="h-4 w-4 text-slate-400" />
@@ -716,7 +835,7 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Cadastrando...
+                  {pendingVideos.length > 0 ? `Enviando vídeos (${videoProgress}%)` : "Cadastrando..."}
                 </>
               ) : (
                 <>
