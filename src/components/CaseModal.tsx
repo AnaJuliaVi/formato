@@ -105,7 +105,13 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
       name === "taxa_conclusao" ||
       name === "taxa_engajamento"
     ) {
-      setFormData({ ...formData, [name]: value ? Number(value) : null });
+      const percentage = value ? Number(value) : null;
+      if (percentage !== null && (percentage < 0 || percentage > 100)) {
+        setError("Os campos percentuais devem estar entre 0 e 100.");
+        return;
+      }
+      setError(null);
+      setFormData({ ...formData, [name]: percentage });
     } else {
       setFormData({ ...formData, [name]: value });
     }
@@ -693,6 +699,7 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
                       }
                       step={metric.isPercentage ? "0.01" : "1"}
                       min="0"
+                      max={metric.isPercentage ? "100" : undefined}
                       className="input-field"
                     />
                   </div>
