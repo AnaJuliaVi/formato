@@ -57,6 +57,7 @@ export default function FormatDetailPage() {
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [percentageErrors, setPercentageErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -240,10 +241,14 @@ export default function FormatDetailPage() {
         numericValue !== null &&
         (numericValue < 0 || numericValue > 100)
       ) {
-        setError("Os campos percentuais devem estar entre 0 e 100.");
+        setPercentageErrors((prev) => ({ ...prev, [name]: "Informe um valor entre 0 e 100." }));
         return;
       }
-      setError(null);
+      setPercentageErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
       setEditData({ ...editData, [name]: numericValue });
     } else {
       setEditData({ ...editData, [name]: value });
@@ -850,8 +855,11 @@ export default function FormatDetailPage() {
                           step={metric.isPercentage ? "0.01" : "1"}
                           min="0"
                           max={metric.isPercentage ? "100" : undefined}
-                          className="input-field"
+                          className={`input-field ${metric.isPercentage && percentageErrors[metric.key] ? "border-red-300 focus:border-red-500 focus:ring-red-200" : ""}`}
                         />
+                        {metric.isPercentage && percentageErrors[metric.key] && (
+                          <p className="mt-1 text-xs text-red-600">{percentageErrors[metric.key]}</p>
+                        )}
                       </div>
                     ))}
                   </div>
