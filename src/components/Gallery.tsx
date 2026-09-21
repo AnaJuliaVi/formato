@@ -9,7 +9,29 @@ interface GalleryProps {
 export default function Gallery({ images, alt }: GalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const downloadImage = async (url: string, index: number) => {
+    try {
+      setDownloading(true);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Falha ao baixar a imagem.");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = alt.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "-" + (index + 1);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.alert("Não foi possível baixar a imagem.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const scrollToIndex = useCallback((index: number) => {
     const container = scrollRef.current;
@@ -87,16 +109,7 @@ export default function Gallery({ images, alt }: GalleryProps) {
             className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
           />
           <div className="absolute right-3 top-3 flex items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-            <a
-              href={images[0]}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-soft backdrop-blur-md hover:bg-white"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Baixar
-            </a>
+            <button type="button" onClick={() => downloadImage(images[0], 0)} disabled={downloading} className="inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-soft backdrop-blur-md hover:bg-white disabled:opacity-60"><Download className="h-3.5 w-3.5" />{downloading ? "Baixando..." : "Baixar"}</button>
             <button
               onClick={() => setLightboxOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-soft backdrop-blur-md hover:bg-white"
@@ -166,16 +179,7 @@ export default function Gallery({ images, alt }: GalleryProps) {
             {currentIndex + 1} / {images.length}
           </span>
           <div className="flex items-center gap-3">
-            <a
-              href={images[currentIndex]}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-globo-600 transition-colors hover:text-globo-700"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Baixar
-            </a>
+            <button type="button" onClick={() => downloadImage(images[currentIndex], currentIndex)} disabled={downloading} className="inline-flex items-center gap-1.5 text-xs font-medium text-globo-600 transition-colors hover:text-globo-700 disabled:opacity-60"><Download className="h-3.5 w-3.5" />{downloading ? "Baixando..." : "Baixar"}</button>
             <button
               onClick={() => setLightboxOpen(true)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-globo-600 transition-colors hover:text-globo-700"
