@@ -79,6 +79,7 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
   const [linkInput, setLinkInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [percentageErrors, setPercentageErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,10 +108,14 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
     ) {
       const percentage = value ? Number(value) : null;
       if (percentage !== null && (percentage < 0 || percentage > 100)) {
-        setError("Os campos percentuais devem estar entre 0 e 100.");
+        setPercentageErrors((prev) => ({ ...prev, [name]: "Informe um valor entre 0 e 100." }));
         return;
       }
-      setError(null);
+      setPercentageErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
       setFormData({ ...formData, [name]: percentage });
     } else {
       setFormData({ ...formData, [name]: value });
@@ -700,8 +705,11 @@ export default function CaseModal({ open, onClose, onCreated }: CaseModalProps) 
                       step={metric.isPercentage ? "0.01" : "1"}
                       min="0"
                       max={metric.isPercentage ? "100" : undefined}
-                      className="input-field"
+                      className={`input-field ${metric.isPercentage && percentageErrors[metric.key] ? "border-red-300 focus:border-red-500 focus:ring-red-200" : ""}`}
                     />
+                    {metric.isPercentage && percentageErrors[metric.key] && (
+                      <p className="mt-1 text-xs text-red-600">{percentageErrors[metric.key]}</p>
+                    )}
                   </div>
                 ))}
               </div>
