@@ -233,7 +233,18 @@ export default function FormatDetailPage() {
       "conversoes",
     ];
     if (numericKeys.includes(name)) {
-      setEditData({ ...editData, [name]: value ? Number(value) : null });
+      const numericValue = value ? Number(value) : null;
+      const percentageKeys = ["ctr", "taxa_conclusao", "taxa_engajamento"];
+      if (
+        percentageKeys.includes(name) &&
+        numericValue !== null &&
+        (numericValue < 0 || numericValue > 100)
+      ) {
+        setError("Os campos percentuais devem estar entre 0 e 100.");
+        return;
+      }
+      setError(null);
+      setEditData({ ...editData, [name]: numericValue });
     } else {
       setEditData({ ...editData, [name]: value });
     }
@@ -838,6 +849,7 @@ export default function FormatDetailPage() {
                           onChange={handleEditChange}
                           step={metric.isPercentage ? "0.01" : "1"}
                           min="0"
+                          max={metric.isPercentage ? "100" : undefined}
                           className="input-field"
                         />
                       </div>
