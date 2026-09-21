@@ -69,7 +69,7 @@ export default function Gallery({ images, alt }: GalleryProps) {
 
   if (images.length === 0) {
     return (
-      <div className="flex aspect-video items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200/60">
+      <div className="flex h-[420px] items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200/60">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/60">
           <Expand className="h-8 w-8 text-slate-300" />
         </div>
@@ -80,11 +80,11 @@ export default function Gallery({ images, alt }: GalleryProps) {
   if (images.length === 1) {
     return (
       <>
-        <div className="group relative overflow-hidden rounded-2xl bg-slate-100">
+        <div className="group relative h-[420px] overflow-hidden rounded-2xl bg-slate-100">
           <img
             src={images[0]}
             alt={alt}
-            className="w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
+            className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
           />
           <button
             onClick={() => setLightboxOpen(true)}
@@ -110,12 +110,12 @@ export default function Gallery({ images, alt }: GalleryProps) {
 
   return (
     <>
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card">
         {/* Main scrollable gallery */}
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="gallery-scroll flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
+          className="gallery-scroll flex h-[420px] snap-x snap-mandatory overflow-x-auto scroll-smooth"
         >
           {images.map((img, i) => (
             <div
@@ -126,7 +126,7 @@ export default function Gallery({ images, alt }: GalleryProps) {
               <img
                 src={img}
                 alt={`${alt} — imagem ${i + 1}`}
-                className="w-full object-contain"
+                className="h-full w-full object-contain"
               />
             </div>
           ))}
