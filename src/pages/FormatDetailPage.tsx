@@ -545,9 +545,9 @@ export default function FormatDetailPage() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-6">
         {/* Image / Gallery */}
-        <div className="lg:col-span-3">
+        <div className="w-full">
           {editing ? (
             /* Edit mode gallery */
             <div className="card p-5">
@@ -674,7 +674,7 @@ export default function FormatDetailPage() {
         </div>
 
         {/* Details */}
-        <div className="lg:col-span-2">
+        <div className="w-full">
           <div className="card p-6">
             {editing ? (
               /* Edit Mode */
